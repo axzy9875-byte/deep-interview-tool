@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: cherry-tungsten-interview
+    runtime: docker
+    region: singapore
+    plan: 0.5c-512mb
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: INTERVIEW_DATA_FILE
+        value: /data/public-interviews.json
+      - key: PUBLIC_SPEECH_CONFIG_FILE
+        value: /data/public-speech.json
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_COOKIE_SECRET
+        generateValue: true
+      - key: PUBLIC_SPEECH_ENABLED
+        value: true
+      - key: PUBLIC_SPEECH_API_KEY
+        sync: false
+      - key: PUBLIC_SPEECH_MODEL
+        value: doubao-seed-2-0-lite-260428
+    disk:
+      name: interview-data
+      mountPath: /data
+      sizeGB: 1

@@ -1,0 +1,7 @@
+node_modules
+dist
+work
+server-data
+.git
+.DS_Store
+*.log
