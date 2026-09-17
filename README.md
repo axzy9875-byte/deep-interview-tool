@@ -1,4 +1,6 @@
-# 樱桃钨 (AinterReview)
+# 深度访谈工具（樱桃钨 / AinterReview）
+
+工具主要用于深度访谈，可以按照上传的访谈提纲或者让ai根据主题生成问题，通过调用DeepSeek的api来支撑文本内容，豆包api支持语音转文字的识别
 
 ![](public/logo.png)
 
