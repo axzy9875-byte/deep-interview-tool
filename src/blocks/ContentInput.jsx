@@ -67,6 +67,8 @@ export function ContentInput() {
   
   const strict = contentState.questionMode === 'outline';
   const locked = sessionState.questions.length > 0;
+  const hasPendingText = Boolean(textInput.trim());
+  const canAnalyze = contentState.sources.length > 0 || hasPendingText;
 
   // 添加网址
   const handleAddUrl = async () => {
@@ -148,6 +150,8 @@ export function ContentInput() {
   // 开始分析内容
   const handleStartAnalysis = async () => {
     try {
+      // 文本框中的内容可以直接参与分析，无需先单独点击“添加文本”。
+      if (hasPendingText) handleAddText();
       await analyzeContent();
     } catch (error) {
       console.error('Content analysis failed:', error);
@@ -258,7 +262,7 @@ export function ContentInput() {
             
             {/* 顶部操作按钮 */}
             <Group spacing="xs">
-              {!strict && contentState.analysisResult && (
+              {!strict && contentState.analysisResult && canAnalyze && (
                 <Button 
                   variant="light"
                   size="sm"
@@ -269,7 +273,7 @@ export function ContentInput() {
                   重新分析
                 </Button>
               )}
-              {!strict && contentState.sources.length > 0 && !contentState.analysisResult && (
+              {!strict && canAnalyze && !contentState.analysisResult && (
                 <Button 
                   size="sm"
                   onClick={handleStartAnalysis}
@@ -391,7 +395,7 @@ export function ContentInput() {
         )}
         
 
-        <AnalysisReview analysis={contentState.analysisResult} analyzing={contentState.isAnalyzing} hasSources={contentState.sources.length > 0} onAnalyze={handleStartAnalysis} />
+        <AnalysisReview analysis={contentState.analysisResult} analyzing={contentState.isAnalyzing} hasSources={canAnalyze} onAnalyze={handleStartAnalysis} />
 
         {/* 在预览前选择来源，保留上方的分析摘要 */}
         <Card withBorder padding="md"><Stack spacing="sm">
