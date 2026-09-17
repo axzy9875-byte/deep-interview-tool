@@ -27,7 +27,7 @@ export default function AdminPage() {
   if (!auth.authenticated) return <Container size="xs" py={80}><Stack>
     <IconLock size={42} />
     <Title order={2}>管理员登录</Title>
-    <Text color="dimmed">API配置、内容准备、访谈稿和全部受访记录仅管理员可见。</Text>
+    <Text color="dimmed">API 配置、内容准备、测试工具和全部受访记录仅管理员可见。</Text>
     {error && <Alert color="red">{error}</Alert>}
     <PasswordInput label="管理员密码" value={password} onChange={event => setPassword(event.currentTarget.value)} onKeyDown={event => event.key === 'Enter' && login()} />
     <Button onClick={login}>登录管理端</Button>
@@ -41,7 +41,7 @@ export default function AdminPage() {
       </Group>
       <Tabs defaultValue="workspace" mt="sm">
         <Tabs.List>
-          <Tabs.Tab value="workspace" icon={<IconSettings size={16} />}>访谈设置与写稿</Tabs.Tab>
+          <Tabs.Tab value="workspace" icon={<IconSettings size={16} />}>访谈配置</Tabs.Tab>
           <Tabs.Tab value="public" icon={<IconUsers size={16} />}>公开访谈管理</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="workspace"><InterviewPage /></Tabs.Panel>

@@ -9,7 +9,8 @@ import {
   Paper,
   Center,
   Alert,
-  Modal
+  Modal,
+  Switch
 } from '@mantine/core';
 import { 
   IconSettings, 
@@ -24,6 +25,8 @@ import { APIConfig } from './APIConfig.jsx';
 import { ContentInput } from './ContentInput.jsx';
 import { InterviewSession } from './InterviewSession.jsx';
 import { InterviewResult } from './InterviewResult.jsx';
+
+const TEST_TOOLS_STORAGE_KEY = 'interview_admin_test_tools_visible';
 
 export function InterviewWorkspace() {
   const { 
@@ -43,6 +46,13 @@ export function InterviewWorkspace() {
   // 确认对话框状态
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [newInterviewConfirmOpen, setNewInterviewConfirmOpen] = useState(false);
+  const [showTestTools, setShowTestTools] = useState(() => {
+    try {
+      return localStorage.getItem(TEST_TOOLS_STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
   
   // 监控状态变化
   useEffect(() => {
@@ -100,30 +110,42 @@ export function InterviewWorkspace() {
     },
     {
       value: 'interviewing',
-      label: '进行访谈',
-      description: 'AI 提问，创作者回答',
+      label: '进行访谈（测试）',
+      description: '管理员试跑 AI 访谈',
       icon: IconMessages,
       component: InterviewSession
     },
     {
       value: 'completed',
-      label: '生成访谈稿',
-      description: '查看和导出访谈结果',
+      label: '生成访谈稿（测试）',
+      description: '查看测试访谈结果',
       icon: IconCheck,
       component: InterviewResult
     },
     {
       value: 'new-interview',
-      label: '开始新访谈',
-      description: '重置所有数据开始新的访谈',
+      label: '开始新访谈（测试）',
+      description: '清空测试数据后重新试跑',
       icon: IconRefresh,
       component: null // 特殊步骤，不渲染组件
     }
   ];
   
   const currentStepIndex = getStepIndex();
-  const currentStepConfig = steps[currentStepIndex];
+  const visibleSteps = showTestTools ? steps : steps.slice(0, 2);
+  const displayedStepIndex = showTestTools ? currentStepIndex : Math.min(currentStepIndex, 1);
+  const currentStepConfig = steps[displayedStepIndex];
   const CurrentComponent = currentStepConfig?.component;
+
+  const handleTestToolsVisibility = (event) => {
+    const visible = event.currentTarget.checked;
+    setShowTestTools(visible);
+    try {
+      localStorage.setItem(TEST_TOOLS_STORAGE_KEY, String(visible));
+    } catch {
+      // 浏览器拒绝本地存储时，当前页面内的开关仍然有效。
+    }
+  };
   
   // 手动切换步骤（增强版本，支持更多条件切换）
   const handleStepChange = (stepIndex) => {
@@ -200,16 +222,34 @@ export function InterviewWorkspace() {
             AI 驱动的智能访谈工具，帮助独立创作者完成高质量访谈
           </Text>
         </div>
+
+        <Paper withBorder p="md">
+          <Group position="apart" noWrap>
+            <div>
+              <Text weight={600}>管理员测试功能（可选）</Text>
+              <Text size="sm" color="dimmed">
+                用于试跑完整访谈流程。关闭后只显示配置与内容准备，已有问题、回答和稿件仍会保留。
+              </Text>
+            </div>
+            <Switch
+              checked={showTestTools}
+              onChange={handleTestToolsVisibility}
+              label="显示测试功能"
+              labelPosition="left"
+              size="md"
+            />
+          </Group>
+        </Paper>
         
         {/* 步骤指示器 */}
         <Paper padding="md">
           <Stepper 
-            active={currentStepIndex} 
+            active={displayedStepIndex}
             onStepClick={handleStepChange}
             breakpoint="sm"
             allowNextStepsSelect={false}
           >
-            {steps.map((step, index) => {
+            {visibleSteps.map((step, index) => {
               // 动态计算每个步骤是否可选择
               let allowStepSelect = false;
               if (index === 0) {
@@ -262,7 +302,7 @@ export function InterviewWorkspace() {
           </Group>
           
           <Group spacing="xs">
-            {currentStepIndex === 1 && (
+            {displayedStepIndex === 1 && (
               <Button 
                 variant="subtle" 
                 size="sm" 
@@ -271,7 +311,7 @@ export function InterviewWorkspace() {
                 重新准备
               </Button>
             )}
-            {currentStepIndex === 2 && (
+            {showTestTools && displayedStepIndex === 2 && (
               <Button 
                 variant="subtle" 
                 size="sm" 
@@ -280,7 +320,7 @@ export function InterviewWorkspace() {
                 重新生成问题
               </Button>
             )}
-            {currentStepIndex === 0 && (
+            {displayedStepIndex === 0 && (
               <Button 
                 variant="subtle" 
                 size="sm" 
@@ -293,7 +333,7 @@ export function InterviewWorkspace() {
         </Group>
         
         {/* 当前步骤内容 */}
-        {currentStepIndex < 4 && (
+        {displayedStepIndex < 4 && (
           <Paper shadow="sm" withBorder>
             {CurrentComponent ? (
               <CurrentComponent />

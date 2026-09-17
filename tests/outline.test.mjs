@@ -166,3 +166,34 @@ test('outline preview edit controls remain enabled when an older interview exist
   assert.equal(startButtons.length, 1);
   assert.ok(!startButtons[0].includes('disabled'));
 });
+
+test('admin test workflow is hidden by default and can be explicitly shown', async () => {
+  buildSync({ stdin: { contents: "export { InterviewWorkspace } from './src/blocks/InterviewWorkspace.jsx'; export { useInterviewStore as store } from './src/hooks/useInterviewStore.jsx';", resolveDir: new URL('../', import.meta.url).pathname, loader: 'jsx' }, outfile: new URL('../work/admin-test-tools-ui.mjs', import.meta.url).pathname, bundle: true, platform: 'node', format: 'esm', packages: 'external', jsx: 'automatic' });
+  const { InterviewWorkspace, store: workspaceStore } = await import('../work/admin-test-tools-ui.mjs');
+  const { createElement } = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  workspaceStore.setState({
+    interviewState: { ...workspaceStore.getState().interviewState, currentStep: 'content-input' },
+    apiState: { ...workspaceStore.getState().apiState, isConfigured: true }
+  });
+  localStorage.removeItem('interview_admin_test_tools_visible');
+  const oldError = console.error; console.error = () => {};
+  let hiddenHtml;
+  let visibleHtml;
+  try {
+    hiddenHtml = renderToStaticMarkup(createElement(InterviewWorkspace));
+    localStorage.setItem('interview_admin_test_tools_visible', 'true');
+    visibleHtml = renderToStaticMarkup(createElement(InterviewWorkspace));
+  } finally {
+    console.error = oldError;
+    localStorage.removeItem('interview_admin_test_tools_visible');
+  }
+  assert.match(hiddenHtml, /管理员测试功能（可选）/);
+  assert.match(hiddenHtml, /显示测试功能/);
+  assert.doesNotMatch(hiddenHtml, /进行访谈（测试）/);
+  assert.doesNotMatch(hiddenHtml, /生成访谈稿（测试）/);
+  assert.doesNotMatch(hiddenHtml, /开始新访谈（测试）/);
+  assert.match(visibleHtml, /进行访谈（测试）/);
+  assert.match(visibleHtml, /生成访谈稿（测试）/);
+  assert.match(visibleHtml, /开始新访谈（测试）/);
+});
