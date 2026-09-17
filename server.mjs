@@ -121,8 +121,18 @@ async function handleInterviewApi(req, res) {
     if (pathname === '/api/admin/campaigns' && req.method === 'POST') {
       json(res, 201, { campaign: await interviewStore.createCampaign(await readJson(req)) }); return true;
     }
+    const adminCampaignMatch = pathname.match(/^\/api\/admin\/campaigns\/([^/]+)$/);
+    if (adminCampaignMatch && req.method === 'DELETE') {
+      const deleted = await interviewStore.deleteCampaign(decodeURIComponent(adminCampaignMatch[1]));
+      json(res, deleted ? 200 : 404, deleted ? { deleted } : { error: '访谈链接不存在或已删除' }); return true;
+    }
     if (pathname === '/api/admin/sessions' && req.method === 'GET') {
       json(res, 200, { sessions: await interviewStore.listSessions(url.searchParams.get('campaignId')) }); return true;
+    }
+    const adminSessionMatch = pathname.match(/^\/api\/admin\/sessions\/([^/]+)$/);
+    if (adminSessionMatch && req.method === 'DELETE') {
+      const deleted = await interviewStore.deleteSession(decodeURIComponent(adminSessionMatch[1]));
+      json(res, deleted ? 200 : 404, deleted ? { deleted } : { error: '访谈记录不存在或已删除' }); return true;
     }
     if (pathname === '/api/admin/public-speech' && req.method === 'GET') {
       json(res, 200, { config: await publicSpeechStore.publicStatus(), tokenLimit: PUBLIC_SPEECH_TOKEN_LIMIT }); return true;

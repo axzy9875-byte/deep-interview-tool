@@ -50,9 +50,11 @@ test('strict interview is exact, idempotent, makes no network requests, resumes 
 
 test('AI mode prompts use original material beyond summary and never silently return creator defaults', () => {
   const client = new AIAPIClient({ apiKey: 'test', baseUrl: 'https://api.deepseek.com/v1', model: 'deepseek-chat' });
-  const context = { sources: [{ title: '研究提纲', content: '研究员工创新行为，特别关注反例 unique-source-detail。' }], analysisResult: { summary: '摘要没有具体细节', keyTopics: ['创新'] } };
+  const context = { interviewInstructions: '只访问制造业一线员工，并说明资料仅用于研究。', sources: [{ title: '研究提纲', content: '研究员工创新行为，特别关注反例 unique-source-detail。' }], analysisResult: { summary: '摘要没有具体细节', keyTopics: ['创新'] } };
   assert.match(client.buildQuestionListPrompt(context), /unique-source-detail/);
+  assert.match(client.buildQuestionListPrompt(context), /只访问制造业一线员工/);
   assert.match(client.buildQuestionPrompt(context, { questions: [], answers: {} }), /unique-source-detail/);
+  assert.match(client.buildContentAnalysisPrompt(context.sources, context.interviewInstructions), /资料仅用于研究/);
   const warn = console.warn; console.warn = () => {};
   try { assert.throws(() => client.parseQuestionListResponse({ choices: [{ message: { content: 'not json' } }] }), /不会使用默认问题/); }
   finally { console.warn = warn; }
@@ -79,10 +81,28 @@ test('preview mode selection retains analysis and immediately shows outline in o
   assert.equal(store.getState().contentState.questionMode, 'ai');
 });
 
+test('adding a new source invalidates the old outline and outline mode imports the newest source', () => {
+  store.setState({ contentState: { ...store.getState().contentState, sources: [{ id: 'old-source', title: '旧提纲', content: '1. 旧问题？' }], outlineSourceId: 'old-source', outlineQuestions: ['旧问题？'], outlineConfirmed: true, previewQuestions: [{ question: '旧预览' }], analysisResult: { summary: '旧分析' }, interviewInstructions: '仅用于学术研究。' } });
+  const added = store.getState().addContentSource({ type: 'text', title: '新提纲', content: '1. 新问题一？\n2. 新问题二？', metadata: { addedAt: new Date().toISOString() } });
+  let state = store.getState();
+  assert.equal(state.contentState.outlineSourceId, added.id);
+  assert.deepEqual(state.contentState.outlineQuestions, []);
+  assert.deepEqual(state.contentState.previewQuestions, []);
+  assert.equal(state.contentState.analysisResult, null);
+  store.getState().setQuestionMode('outline');
+  state = store.getState();
+  assert.deepEqual(state.contentState.outlineQuestions, ['新问题一？', '新问题二？']);
+  assert.equal(state.contentState.interviewInstructions, '仅用于学术研究。');
+  store.getState().saveSessionData();
+  store.getState().updateContentState({ interviewInstructions: '' });
+  store.getState().loadSessionData();
+  assert.equal(store.getState().contentState.interviewInstructions, '仅用于学术研究。');
+});
+
 test('saved legacy fallback is archived and hidden while analysis and interview answers remain intact', () => {
   const legacy = ['能先简单介绍一下您的创作背景吗？', '是什么让您开始这个创作项目的？', '在创作过程中，您的工作流程是怎样的？', '创作过程中遇到过什么挑战吗？', '对于想要开始类似创作的人，您有什么建议？'].map(question => ({ question }));
   const state = store.getState();
-  localStorage.setItem('interview_session_data', JSON.stringify({ contentState: { ...state.contentState, previewQuestions: legacy }, sessionState: { ...state.sessionState, answers: { existing: { content: '保留的回答' } } }, interviewState: state.interviewState, resultState: state.resultState }));
+  localStorage.setItem('interview_session_data', JSON.stringify({ contentState: { ...state.contentState, analysisResult: { summary: '员工研究分析' }, previewQuestions: legacy }, sessionState: { ...state.sessionState, answers: { existing: { content: '保留的回答' } } }, interviewState: state.interviewState, resultState: state.resultState }));
   store.getState().loadSessionData();
   assert.deepEqual(store.getState().contentState.previewQuestions, []);
   assert.equal(store.getState().contentState.legacyPreviewBackup.length, 5);
@@ -135,7 +155,7 @@ test('rendered preparation page shows both preview buttons and full analysis eve
   const { ContentInput, store: uiStore } = await import('../work/outline-test-ui.mjs');
   const { createElement } = await import('react');
   const { renderToStaticMarkup } = await import('react-dom/server');
-  uiStore.setState({ contentState: { ...uiStore.getState().contentState, analysisResult: { summary: '完整摘要审核测试', keyTopics: ['员工角色身份变化'], extraDetail: '额外详情也必须可见' } }, sessionState: { ...uiStore.getState().sessionState, questions: [{ id: 'existing', content: '已有问题' }] } });
+  uiStore.setState({ contentState: { ...uiStore.getState().contentState, interviewInstructions: '访谈资料仅用于学术研究，请避免透露企业名称。', analysisResult: { summary: '完整摘要审核测试', keyTopics: ['员工角色身份变化'], extraDetail: '额外详情也必须可见' } }, sessionState: { ...uiStore.getState().sessionState, questions: [{ id: 'existing', content: '已有问题' }] } });
   const oldError = console.error; console.error = () => {};
   let html;
   try { html = renderToStaticMarkup(createElement(ContentInput)); } finally { console.error = oldError; }
@@ -143,6 +163,9 @@ test('rendered preparation page shows both preview buttons and full analysis eve
   assert.match(html, /AI 分析生成问题/);
   assert.match(html, /完整摘要审核测试/);
   assert.match(html, /额外详情也必须可见/);
+  assert.match(html, /访谈说明（可选）/);
+  assert.match(html, /访谈资料仅用于学术研究/);
+  assert.match(html, /准备完成并分析材料/);
   assert.match(html, /备份旧记录，保留材料和分析重新设置访谈/);
   const buttons = [...html.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(m => m[0]);
   assert.ok(buttons.some(button => button.includes('展示提纲原题') && !button.includes('disabled')));

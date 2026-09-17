@@ -118,6 +118,7 @@ export function ContentInput() {
     addContentSource(source);
     setTextInput('');
     setTextTitle('');
+    return source;
   };
   
   // 处理文件上传（支持多选）
@@ -150,11 +151,12 @@ export function ContentInput() {
   // 开始分析内容
   const handleStartAnalysis = async () => {
     try {
-      // 文本框中的内容可以直接参与分析，无需先单独点击“添加文本”。
+      // 自动保存输入框中的内容，然后使用包含新内容的最新状态分析。
       if (hasPendingText) handleAddText();
       await analyzeContent();
     } catch (error) {
       console.error('Content analysis failed:', error);
+      updateContentState({ error: error.message || '内容分析失败，请检查配置后重试。' });
     }
   };
   
@@ -168,6 +170,12 @@ export function ContentInput() {
     } finally {
       setIsGeneratingPreview(false);
     }
+  };
+
+  const handleQuestionModeChange = (mode) => {
+    // 如果输入框还有未保存的材料，选择预览方式时一并保存，避免继续读取旧提纲。
+    if (hasPendingText) handleAddText();
+    setQuestionMode(mode);
   };
   
   // 重新配置 - 清除内容分析结果和问题预览
@@ -262,7 +270,7 @@ export function ContentInput() {
             
             {/* 顶部操作按钮 */}
             <Group spacing="xs">
-              {!strict && contentState.analysisResult && canAnalyze && (
+              {contentState.analysisResult && canAnalyze && (
                 <Button 
                   variant="light"
                   size="sm"
@@ -273,14 +281,14 @@ export function ContentInput() {
                   重新分析
                 </Button>
               )}
-              {!strict && canAnalyze && !contentState.analysisResult && (
+              {canAnalyze && !contentState.analysisResult && (
                 <Button 
                   size="sm"
                   onClick={handleStartAnalysis}
                   loading={contentState.isAnalyzing}
                   leftIcon={<IconAnalyze size={16} />}
                 >
-                  开始分析内容
+                  准备完成并分析材料
                 </Button>
               )}
             </Group>
@@ -297,6 +305,17 @@ export function ContentInput() {
             {contentState.error}
           </Alert>
         )}
+
+        <Textarea
+          label="访谈说明（可选）"
+          description="可填写访谈目的、受访对象、保密说明和提问要求；说明会显示在问题预览和公开访谈页面。"
+          placeholder="例如：本次访谈用于了解员工使用 AI 后的工作变化，请结合具体经历回答；内容仅用于研究。"
+          value={contentState.interviewInstructions || ''}
+          onChange={(event) => updateContentState({ interviewInstructions: event.currentTarget.value })}
+          onBlur={saveSessionData}
+          minRows={3}
+          autosize
+        />
         
         <Tabs value={activeTab} onTabChange={setActiveTab}>
           <Tabs.List>
@@ -357,8 +376,17 @@ export function ContentInput() {
                   onClick={handleAddText}
                   disabled={!textInput.trim()}
                   leftIcon={<IconPlus size={14} />}
+                  variant="outline"
                 >
-                  添加文本
+                  仅添加，继续补充材料
+                </Button>
+                <Button
+                  onClick={handleStartAnalysis}
+                  disabled={!canAnalyze}
+                  loading={contentState.isAnalyzing}
+                  leftIcon={<IconAnalyze size={16} />}
+                >
+                  准备完成并分析材料
                 </Button>
               </Group>
             </Stack>
@@ -400,9 +428,14 @@ export function ContentInput() {
         {/* 在预览前选择来源，保留上方的分析摘要 */}
         <Card withBorder padding="md"><Stack spacing="sm">
           <Title order={3}>问题预览设置</Title>
+          <Alert color="cyan" title="访谈说明">
+            <Text style={{ whiteSpace: 'pre-wrap' }}>
+              {contentState.interviewInstructions?.trim() || '尚未填写访谈说明。可在上方补充访谈目的、受访对象、保密说明或提问要求。'}
+            </Text>
+          </Alert>
           <Group grow>
-            <Button size="md" variant={strict ? 'filled' : 'outline'} disabled={contentState.isAnalyzing || isGeneratingPreview} onClick={() => setQuestionMode('outline')}>展示提纲原题（不调用 AI）</Button>
-            <Button size="md" variant={!strict ? 'filled' : 'outline'} disabled={contentState.isAnalyzing || isGeneratingPreview} onClick={() => setQuestionMode('ai')}>AI 分析生成问题</Button>
+            <Button size="md" variant={strict ? 'filled' : 'outline'} disabled={contentState.isAnalyzing || isGeneratingPreview} onClick={() => handleQuestionModeChange('outline')}>展示提纲原题（不调用 AI）</Button>
+            <Button size="md" variant={!strict ? 'filled' : 'outline'} disabled={contentState.isAnalyzing || isGeneratingPreview} onClick={() => handleQuestionModeChange('ai')}>AI 分析生成问题</Button>
           </Group>
           <Text size="sm" color="dimmed">当前选择：{strict ? '按原文、原顺序展示提纲题目' : '调用大模型生成问题'}。切换预览不会删除分析或旧访谈记录。</Text>
           {locked && <Alert color="blue"><Stack spacing="xs">

@@ -66,6 +66,7 @@ export const useInterviewStore = create((set, get) => ({
   // 内容分析状态
   contentState: {
     questionMode: 'ai', outlineQuestions: [], outlineConfirmed: false,
+    interviewInstructions: '',
     sources: [], // 网址和文档列表
     analysisResult: null, // AI分析结果
     previewQuestions: [], // 问题预览列表
@@ -232,11 +233,13 @@ export const useInterviewStore = create((set, get) => ({
   setQuestionMode: (mode) => {
     if (!['outline', 'ai'].includes(mode)) return;
     set(state => {
-      const existing = state.contentState.outlineQuestions || [];
-      const source = state.contentState.sources[0];
-      const outlineQuestions = mode === 'outline' && !existing.length && source ? parseOutline(source.content) : existing;
+      const sources = state.contentState.sources || [];
+      const source = sources.find(item => item.id === state.contentState.outlineSourceId) || sources.at(-1);
+      const outlineQuestions = mode === 'outline' && source
+        ? parseOutline(source.content)
+        : state.contentState.outlineQuestions || [];
       return { contentState: { ...state.contentState, questionMode: mode, outlineQuestions,
-        outlineSourceId: state.contentState.outlineSourceId || source?.id || null,
+        outlineSourceId: source?.id || null,
         outlineConfirmed: false, previewQuestions: [], previewOrigin: null,
         questionFeedback: {}, usedPreviewQuestions: [], error: null } };
     });
@@ -326,30 +329,38 @@ export const useInterviewStore = create((set, get) => ({
   
   // 添加内容源
   addContentSource: (source) => {
+    const preparedSource = {
+      ...source,
+      id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      addedAt: new Date().toISOString()
+    };
     set((state) => ({
       contentState: {
         ...state.contentState,
-        analysisResult: null, previewQuestions: [], questionFeedback: {}, outlineConfirmed: false,
-        sources: [...state.contentState.sources, { 
-          ...source, 
-          id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          addedAt: new Date().toISOString()
-        }]
+        analysisResult: null, previewQuestions: [], previewOrigin: null, questionFeedback: {},
+        outlineQuestions: [], outlineConfirmed: false, outlineSourceId: preparedSource.id,
+        sources: [...state.contentState.sources, preparedSource]
       }
     }));
     // 用户添加内容源时保存数据
     setTimeout(() => get().saveSessionData(), 100);
+    return preparedSource;
   },
   
   // 删除内容源
   removeContentSource: (sourceId) => {
-    set((state) => ({
-      contentState: {
-        ...state.contentState,
-        analysisResult: null, previewQuestions: [], questionFeedback: {}, outlineConfirmed: false,
-        sources: state.contentState.sources.filter(s => s.id !== sourceId)
-      }
-    }));
+    set((state) => {
+      const sources = state.contentState.sources.filter(s => s.id !== sourceId);
+      return {
+        contentState: {
+          ...state.contentState,
+          analysisResult: null, previewQuestions: [], previewOrigin: null, questionFeedback: {},
+          outlineQuestions: [], outlineConfirmed: false,
+          outlineSourceId: sources.at(-1)?.id || null,
+          sources
+        }
+      };
+    });
     // 用户删除内容源时保存数据
     setTimeout(() => get().saveSessionData(), 100);
   },
@@ -368,7 +379,7 @@ export const useInterviewStore = create((set, get) => ({
     
     try {
       const client = new AIAPIClient(apiState);
-      const analysisResult = await client.analyzeContent(contentState.sources);
+      const analysisResult = await client.analyzeContent(contentState.sources, contentState.interviewInstructions);
       
       set((state) => ({
         contentState: {
@@ -1306,6 +1317,7 @@ export const useInterviewStore = create((set, get) => ({
       },
       contentState: {
         questionMode: 'ai', outlineQuestions: [], outlineConfirmed: false,
+        interviewInstructions: '',
         sources: [],
         analysisResult: null,
         previewQuestions: [],

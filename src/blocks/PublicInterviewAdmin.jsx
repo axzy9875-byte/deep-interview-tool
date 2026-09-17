@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Card, CopyButton, Group, Loader, Modal, PasswordInput, Stack, Switch, Table, Text, TextInput, Textarea, Title } from '@mantine/core';
-import { IconCheck, IconCopy, IconDownload, IconEye, IconRefresh, IconSend } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconDownload, IconEye, IconRefresh, IconSend, IconTrash } from '@tabler/icons-react';
 import { useInterviewStore } from '../hooks/useInterviewStore.jsx';
 import { APIConfigManager } from '../../lib/apiConfig.js';
 import { ARK_SPEECH_MODEL, ARK_URL } from '../../lib/arkSpeech.js';
@@ -15,12 +15,16 @@ const request = async (url, options) => {
 export function PublicInterviewAdmin() {
   const { contentState, sessionState } = useInterviewStore();
   const preparedQuestions = useMemo(() => {
-    if (sessionState.questions?.length) return sessionState.questions;
-    if (contentState.questionMode === 'outline') return (contentState.outlineQuestions || []).map((content, index) => ({ id: `outline_${index}`, content }));
-    return (contentState.previewQuestions || []).map((question, index) => ({ id: `preview_${index}`, content: question.question, category: question.category }));
+    if (contentState.questionMode === 'outline' && contentState.outlineConfirmed && contentState.outlineQuestions?.length) {
+      return contentState.outlineQuestions.map((content, index) => ({ id: `outline_${index}`, content }));
+    }
+    if (contentState.questionMode === 'ai' && contentState.previewQuestions?.length) {
+      return contentState.previewQuestions.map((question, index) => ({ id: `preview_${index}`, content: question.question, category: question.category }));
+    }
+    return sessionState.questions || [];
   }, [contentState, sessionState]);
   const [title, setTitle] = useState(contentState.sources?.[0]?.title || '深度访谈');
-  const [description, setDescription] = useState(contentState.analysisResult?.summary || '感谢您接受本次访谈。您的回答会被安全保存，您可以随时暂停并稍后继续。');
+  const [description, setDescription] = useState(contentState.interviewInstructions?.trim() || contentState.analysisResult?.summary || '感谢您接受本次访谈。您的回答会被安全保存，您可以随时暂停并稍后继续。');
   const [campaigns, setCampaigns] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +34,8 @@ export function PublicInterviewAdmin() {
   const [publicSpeech, setPublicSpeech] = useState({ enabled: false, model: ARK_SPEECH_MODEL, apiKey: '', apiKeyConfigured: false, source: 'server' });
   const [error, setError] = useState('');
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = async () => {
     setLoading(true); setError('');
@@ -57,6 +63,9 @@ export function PublicInterviewAdmin() {
   };
 
   useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (contentState.interviewInstructions?.trim()) setDescription(contentState.interviewInstructions.trim());
+  }, [contentState.interviewInstructions]);
 
   const publish = async () => {
     setPublishing(true); setError('');
@@ -81,6 +90,21 @@ export function PublicInterviewAdmin() {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/markdown;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = `${campaign?.title || '访谈'}_${record.participantName}_第${record.attemptNumber}次.md`;
     link.click(); URL.revokeObjectURL(url);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true); setError('');
+    try {
+      const endpoint = deleteTarget.type === 'campaign'
+        ? `/api/admin/campaigns/${encodeURIComponent(deleteTarget.campaign.id)}`
+        : `/api/admin/sessions/${encodeURIComponent(deleteTarget.record.id)}`;
+      await request(endpoint, { method: 'DELETE' });
+      if (deleteTarget.type === 'session' && selectedRecord?.id === deleteTarget.record.id) setSelectedRecord(null);
+      setDeleteTarget(null);
+      await refresh();
+    } catch (err) { setError(err.message); }
+    finally { setDeleting(false); }
   };
 
   return <Stack spacing="lg">
@@ -148,6 +172,7 @@ export function PublicInterviewAdmin() {
             <Group>
               <Badge color="blue">{campaign.sessionCount} 次访谈</Badge>
               <Badge color="green">{campaign.completedCount} 次完成</Badge>
+              <Button compact color="red" variant="subtle" leftIcon={<IconTrash size={14} />} onClick={() => setDeleteTarget({ type: 'campaign', campaign })}>删除链接及全部数据</Button>
             </Group>
           </Group>
           <Group noWrap>
@@ -162,7 +187,10 @@ export function PublicInterviewAdmin() {
               <td>{Object.keys(record.answers || {}).length}/{campaign.questions.length}</td>
               <td>{(record.speechQuota?.used || 0).toLocaleString()} / {(record.speechQuota?.limit || tokenLimit).toLocaleString()}</td>
               <td>{new Date(record.startedAt).toLocaleString()}</td><td>{new Date(record.updatedAt).toLocaleString()}</td>
-              <td><Button compact variant="subtle" leftIcon={<IconEye size={14} />} onClick={() => setSelectedRecord(record)}>查看回答</Button></td>
+              <td><Group spacing={4} noWrap>
+                <Button compact variant="subtle" leftIcon={<IconEye size={14} />} onClick={() => setSelectedRecord(record)}>查看回答</Button>
+                <Button compact color="red" variant="subtle" leftIcon={<IconTrash size={14} />} onClick={() => setDeleteTarget({ type: 'session', record, campaign })}>删除记录</Button>
+              </Group></td>
             </tr>)}</tbody>
           </Table>}
           {!records.length && <Text size="sm" color="dimmed">暂时没有受访记录。</Text>}
@@ -182,6 +210,19 @@ export function PublicInterviewAdmin() {
           <Button leftIcon={<IconDownload size={16} />} onClick={() => downloadRecord(selectedRecord)}>导出这次访谈</Button>
         </Stack>;
       })()}
+    </Modal>
+
+    <Modal opened={!!deleteTarget} onClose={() => !deleting && setDeleteTarget(null)} title={deleteTarget?.type === 'campaign' ? '删除访谈链接及全部数据' : '删除访谈记录'} size="sm" closeOnClickOutside={!deleting} closeOnEscape={!deleting}>
+      <Stack>
+        {deleteTarget?.type === 'campaign' ? <>
+          <Alert color="red">将永久删除“{deleteTarget.campaign.title}”的公开链接、全部访谈次数和所有回答数据，共 {deleteTarget.campaign.sessionCount} 条记录。删除后原链接将立即失效。</Alert>
+        </> : <Alert color="red">将永久删除“{deleteTarget?.record?.participantName}”的第 {deleteTarget?.record?.attemptNumber} 次访谈及其全部回答。</Alert>}
+        <Text size="sm" color="dimmed">此操作用于释放服务器磁盘空间，删除后无法恢复。</Text>
+        <Group position="right">
+          <Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>取消</Button>
+          <Button color="red" loading={deleting} onClick={confirmDelete}>确认永久删除</Button>
+        </Group>
+      </Stack>
     </Modal>
   </Stack>;
 }

@@ -35,9 +35,19 @@ test('public interview store preserves paused, completed and repeated attempts w
     assert.equal((await store.listSessions(campaign.id)).length, 3);
     assert.equal((await store.listCampaigns())[0].completedCount, 1);
     assert.equal(await store.getSession(first.session.id, 'wrong-token'), null);
-    const persisted = JSON.parse(await readFile(filename, 'utf8'));
+    let persisted = JSON.parse(await readFile(filename, 'utf8'));
     assert.equal(persisted.sessions[0].answers.question_1.content, '第一次回答');
     assert.ok(!JSON.stringify(await store.getSession(first.session.id, first.token)).includes('tokenHash'));
+    assert.equal((await store.deleteSession(first.session.id)).id, first.session.id);
+    assert.equal((await store.listSessions(campaign.id)).length, 2);
+    const deletedCampaign = await store.deleteCampaign(campaign.id);
+    assert.equal(deletedCampaign.sessionsDeleted, 2);
+    assert.equal((await store.listCampaigns()).length, 0);
+    assert.equal((await store.listSessions()).length, 0);
+    persisted = JSON.parse(await readFile(filename, 'utf8'));
+    assert.deepEqual(persisted.campaigns, []);
+    assert.deepEqual(persisted.sessions, []);
+    assert.deepEqual(persisted.visitors, []);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
@@ -108,6 +118,16 @@ test('public HTTP flow exposes only campaign questions and stores each attempt s
     const adminSessions = await send(`/api/admin/sessions?campaignId=${campaign.id}`, { headers: { Cookie: cookie } });
     assert.equal(adminSessions.data.sessions[0].answers.question_1.content, '回答一');
     assert.ok(adminSessions.data.sessions[0].startedAt);
+    const deletedSession = await send(`/api/admin/sessions/${started.data.session.id}`, { method: 'DELETE', headers: { Cookie: cookie } });
+    assert.equal(deletedSession.response.status, 200);
+    const missingSession = await send(`/api/public/sessions/${started.data.session.id}?token=${started.data.token}`);
+    assert.equal(missingSession.response.status, 404);
+    const deletedCampaign = await send(`/api/admin/campaigns/${campaign.id}`, { method: 'DELETE', headers: { Cookie: cookie } });
+    assert.equal(deletedCampaign.response.status, 200);
+    const missingCampaign = await send(`/api/public/campaigns/${campaign.id}`);
+    assert.equal(missingCampaign.response.status, 404);
+    const remainingCampaigns = await send('/api/admin/campaigns', { headers: { Cookie: cookie } });
+    assert.deepEqual(remainingCampaigns.data.campaigns, []);
   } finally {
     global.fetch = realFetch;
     server.closeAllConnections(); await new Promise(resolve => server.close(resolve));

@@ -1,23 +1,28 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Group, Select, Stack, Text, Textarea, Checkbox } from '@mantine/core';
 import { useInterviewStore } from '../hooks/useInterviewStore.jsx';
 import { parseOutline } from '../../lib/interviewOutline.js';
 export function OutlineSetup() {
   const { contentState, sessionState, updateContentState, startOutlineInterview, saveSessionData } = useInterviewStore();
-  const [sourceId, setSourceId] = useState(contentState.outlineSourceId || null);
+  const latestSourceId = contentState.sources.at(-1)?.id || null;
+  const [sourceId, setSourceId] = useState(contentState.outlineSourceId || latestSourceId);
   const [error, setError] = useState(null);
   const questions = contentState.outlineQuestions || [];
   const hasExistingInterview = sessionState.questions.length > 0;
   const update = changes => { updateContentState(changes); saveSessionData(); };
   const edit = next => update({ outlineQuestions: next, outlineConfirmed: false });
+  useEffect(() => {
+    const selectedStillExists = contentState.sources.some(source => source.id === contentState.outlineSourceId);
+    setSourceId(selectedStillExists ? contentState.outlineSourceId : latestSourceId);
+  }, [contentState.outlineSourceId, latestSourceId]);
   return <Card withBorder><Stack>
     <Text weight={600}>问题预览 · 提纲原题 · 共 {questions.length} 题</Text>
     <Alert color="blue">问题来源：上传的提纲原文，此预览不调用大模型。按下方确认后的原文和顺序提问，不增加追问；最后一题提交或跳过后结束。导入仅按编号、列表和段落拆分，请删去说明文字、核对每一道问题。</Alert>
     {hasExistingInterview && <Alert color="yellow">已有访谈记录，但当前预览仍可增删、修改和排序。点击下方开始按钮时会先自动备份旧问答与稿件，再按当前清单开始新访谈。</Alert>}
     {error && <Alert color="red">{error}</Alert>}
-    <Select label="选择已上传或添加的提纲" value={sourceId || contentState.sources[0]?.id || null} data={contentState.sources.map(s => ({ value: s.id, label: s.title }))} onChange={setSourceId} />
+    <Select label="选择已上传或添加的提纲" value={sourceId} data={contentState.sources.map(s => ({ value: s.id, label: s.title }))} onChange={setSourceId} />
     <Button variant="light" disabled={!contentState.sources.length} onClick={() => {
-      const source = contentState.sources.find(s => s.id === sourceId) || contentState.sources[0];
+      const source = contentState.sources.find(s => s.id === sourceId) || contentState.sources.at(-1);
       const imported = parseOutline(source.content);
       if (!imported.length) { setError('没有读到问题，请检查提纲内容或手动添加。'); return; }
       update({ outlineQuestions: imported, outlineConfirmed: false, outlineSourceId: source.id }); setError(null);
